@@ -3,55 +3,70 @@ package service
 import (
 	"fmt"
 	"github.com/talonsomeli/src/domain"
+	"strings"
 )
 
-var tweetsUser map[int]*domain.Tweet
-var tweetsId []*domain.Tweet
-func InitializeService() {
- tweetsUser = make(map[int]*domain.Tweet)
- tweetsId = make([]*domain.Tweet, 0)
+type TweetManager struct {
+	tweetsByUser map[string][]*domain.Tweet
+	tweetsId map[int]*domain.Tweet
+	writer TweetWriter
 }
 
-func PublishTweet(tweetToPublish *domain.Tweet) (int, error) {
+func NewTweetManager(tweetWriter TweetWriter) *TweetManager{
+	var tm *TweetManager = new(TweetManager)
+ 	tm.tweetsByUser = make(map[string][]*domain.Tweet)
+ 	tm.tweetsId = make(map[int]*domain.Tweet, 0)
+ 	tm.writer = tweetWriter
+ 	return tm
+}
 
-	if len(tweetToPublish.User) == 0 {
-		return len(tweetsId), fmt.Errorf("user is required")
-	} else if len(tweetToPublish.Text) == 0 {
-		return len(tweetsId), fmt.Errorf("text is required")
-	} else if len(tweetToPublish.Text) > 140 {
-		return len(tweetsId), fmt.Errorf("max tweet length is 140 characters")
+/*func GetUsers() []*domain.User {
+	return users
+}
+func AddUser(nombre string, mail string, nick string, clave string) {
+	users = append(users, domain.NewUser(nombre, mail, nick, clave))
+}*/
+
+func (tm *TweetManager) PublishTweet(realTweet domain.Tweet) (int, error) {
+
+	if len(realTweet.GetUser()) == 0 {
+		return len(tm.tweetsId), fmt.Errorf("user is required")
+	} else if len(realTweet.GetText()) == 0 {
+		return len(tm.tweetsId), fmt.Errorf("text is required")
+	} else if len(realTweet.GetText()) > 140 {
+		return len(tm.tweetsId), fmt.Errorf("max tweet length is 140 characters")
 	}
-	tweetId := len(tweetsId)
-	realTweet := domain.NewTweetId(tweetToPublish.User, tweetToPublish.Text, tweetId)
-	tweetsUser[tweetId] = realTweet
-	tweetsId = append(tweetsId, realTweet)
-	return tweetId, nil
+
+	tm.tweetsByUser[realTweet.GetUser()] = append(tm.tweetsByUser[realTweet.GetUser()], &realTweet)
+	tm.tweetsId[realTweet.GetId()] = &realTweet
+	tm.writer.Save(realTweet)
+	return realTweet.GetId(), nil
 }
 
-func GetTweets() []*domain.Tweet {
-	return tweetsId
-}
-
-func GetTweetById(id int) *domain.Tweet {
-	return tweetsId[id]
-}
-
-func CountTweetsByUser(user string)int {
-
-	cant := 0
-	for _, valor := range tweetsUser {
-		if valor.User == user {cant++}
-	}
-	return cant
-}
-
-func GetTweetsByUser(user string) []*domain.Tweet {
-
-	var tweets []*domain.Tweet
-	for _, valor := range tweetsUser {
-		if valor.User == user {
-			tweets = append(tweets, valor)
+func (tm *TweetManager) SearchTweetsContaining(query string, searchResult chan domain.Tweet) {
+	go func() {
+		for _, tweet := range tm.tweetsId {
+			if strings.Contains(((*tweet).(domain.Tweet)).GetText(), query) {
+				searchResult <- *tweet
+			}
 		}
-	}
-	return tweets
+	}()
+}
+
+func (tm *TweetManager) GetTweets() map[int]*domain.Tweet {
+	return tm.tweetsId
+}
+
+func (tm *TweetManager) GetTweetById(id int) *domain.Tweet {
+	return tm.tweetsId[id]
+}
+
+func (tm *TweetManager) CountTweetsByUser(user string)int {
+
+	return len(tm.tweetsByUser[user])
+}
+
+func (tm *TweetManager) GetTweetsByUser(user string) []*domain.Tweet {
+
+	return tm.tweetsByUser[user]
 }
